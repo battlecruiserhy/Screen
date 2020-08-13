@@ -393,7 +393,7 @@ void getOilArea()
 	imwrite("./result/try_real_oil.jpg", tempColor);
 }
 
-void findAndDrawContour(Mat img, Mat src, string dst, int writeFlag)
+void findAndDrawContour(Mat img, Mat src, string dst, bool writeFlag)
 {
 	// find contour
 	vector<vector<Point>> contours;
@@ -417,44 +417,19 @@ void findAndDrawContour(Mat img, Mat src, string dst, int writeFlag)
 	{
 		drawContours(localTempColor, finalContours, i, CV_RGB(255, 0, 0));
 	}
-	if(writeFlag == 1)
+	if(writeFlag == true)
 		imwrite(dst, localTempColor);
 }
 
-void getScreenArea()
+Mat pixelwiseScan(Mat sourceImg, Rect roi, bool write)
 {
-	double start, end;
-	//namedWindow("window", cv::WINDOW_NORMAL);
-	//resizeWindow("window", cv::Size(640, 720));	//640,720
-	//combineImages();
-	//getScreenArea();
-	//getOilArea();
+	int start_x = roi.tl().x;
+	int start_y = roi.tl().y;
+	int x_length = roi.width;
+	int y_length = roi.height;
 
-
-	//Mat img = imread("./test2/thresResult2.jpg", 0);
-	Mat imgR1 = imread("./Origin2/0/1.jpg", IMREAD_GRAYSCALE);
-	Mat imgR2 = imread("./Origin2/0/2.jpg", IMREAD_GRAYSCALE);
-	start = getTickCount();
-
-
-	Mat thresR;
-	threshold(imgR1, thresR, 0, 255, THRESH_OTSU);
-
-
-	//Mat thresRes = r1;
-	//int height = thresRes.rows;
-	//int width = thresRes.cols;
-	//for (int i = 0; i < width; i++)
-	//{
-	//	for (int j = 0; j < height-1; j++)
-	//	{
-	//		int index = j * width + i;
-	//		int postIndex = (j + 1) * width + i;
-
-
-	Mat modifyImg = thresR.clone();
-	int height = modifyImg.rows;
-	int width = modifyImg.cols;
+	int height;
+	int width;
 	int index, aboveIndex, frontIndex, backIndex, belowIndex;
 	int score = 0;
 	int fillColor = 0;
@@ -462,50 +437,122 @@ void getScreenArea()
 	bool continuousWhite = false;
 	int tempIndex;
 
-	for (int i = 1; i < width - 1; i++)
+	//Mat modifyImg1 = sourceImg.clone();
+	Mat modifyImg1 = sourceImg;
+	height = modifyImg1.rows;
+	width = modifyImg1.cols;
+	score = 0;
+	fillColor = 0;
+	fillThreshold = 30;
+#pragma omp parallel for
+	for (int i = start_x + 1; i < start_x + x_length - 1; i++)
 	{
 		score = 0;
-		for (int j = 1; j < height - 1; j++)
+		for (int j = start_y + 1; j < start_y + y_length - 1; j++)
 		{
 			index = j * width + i;
-			if (modifyImg.data[index] > 0)
+			if (modifyImg1.data[index] > 0)
 			{
 				//aboveIndex = (j - 1) * width + i;
 				belowIndex = (j + 1) * width + i;
 				//frontIndex = j * width + (i - 1);
 				//backIndex = j * width + (i + 1);
-
 				score++;
-				if (modifyImg.data[belowIndex] == 0)
+				if (modifyImg1.data[belowIndex] == 0)
 				{
 					if (score < fillThreshold)
 					{
 						while (score > 0)
 						{
 							tempIndex = (j - score + 1) * width + i;
-							modifyImg.data[tempIndex] = 0;
+							modifyImg1.data[tempIndex] = 0;
 							score--;
-							//cout << score << endl;
 						}
 					}
 					else
 						score = 0;
 				}
-
 			}
 		}
 	}
-	Mat sub = imgR2 - modifyImg;
+	if (write == true)
+		imwrite("./test2/modifyImg1.jpg", modifyImg1);
 
-	//Mat sub = imgR2 - imgR1;
+	// vertical scan(left to right)
+	//Mat modifyImg2 = modifyImg1.clone();
+	Mat modifyImg2 = modifyImg1;
+	height = modifyImg2.rows;
+	width = modifyImg2.cols;
+	score = 0;
+	fillColor = 0;
+	fillThreshold = 5;
+	for (int i = start_y + 1; i < start_y +  y_length - 1; i++)
+	{
+		score = 0;
+		for (int j = start_x + 1; j < start_x + x_length - 1; j++)
+		{
+			index = i * width + j;
+			if (modifyImg2.data[index] > 0)
+			{
+				//aboveIndex = (j - 1) * width + i;
+				belowIndex = index + 1;
+				//frontIndex = j * width + (i - 1);
+				//backIndex = j * width + (i + 1);
+				score++;
+				if (modifyImg2.data[belowIndex] == 0)
+				{
+					if (score < fillThreshold)
+					{
+						while (score > 0)
+						{
+							modifyImg2.data[index - score + 1] = 0;
+							score--;
+						}
+					}
+					else
+						score = 0;
+				}
+			}
+		}
+	}
+	if (write == true)
+		imwrite("./test2/modifyImg2.jpg", modifyImg2);
+	
+	return modifyImg2;
+}
+
+void getScreenArea_scan()
+{
+	bool write = false;
+
+	double start, end;
+	//namedWindow("window", cv::WINDOW_NORMAL);
+	//resizeWindow("window", cv::Size(640, 720));	//640,720
+	//combineImages();
+	//getScreenArea();
+	//getOilArea();
+
+	Mat imgR1 = imread("./Origin2/0/1.jpg", IMREAD_GRAYSCALE);
+	Mat imgR2 = imread("./Origin2/0/2.jpg", IMREAD_GRAYSCALE);
+	start = getTickCount();
+
+	int height;
+	int width;
+	int index, aboveIndex, frontIndex, backIndex, belowIndex;
+	int score = 0;
+	int fillColor = 0;
+	int fillThreshold = 30;
+	bool continuousWhite = false;
+	int tempIndex;
 
 	start = getTickCount();
 	Mat thresR2;
 	threshold(imgR2, thresR2, 80, 255, THRESH_BINARY);	//sub
 	//threshold(sub, thresR2, 0, 255, THRESH_OTSU);
-	//imwrite("./test2/threshTest.jpg", thresR2);
 	end = getTickCount();
 	cout << "thresh time: " << (end - start) / getTickFrequency() << endl;
+	if (write == true)
+		imwrite("./test2/threshTest.jpg", thresR2);
 
 	start = getTickCount();
 	Mat modifyImg1 = thresR2.clone();
@@ -527,7 +574,6 @@ void getScreenArea()
 				belowIndex = (j + 1) * width + i;
 				//frontIndex = j * width + (i - 1);
 				//backIndex = j * width + (i + 1);
-
 				score++;
 				if (modifyImg1.data[belowIndex] == 0)
 				{
@@ -543,12 +589,13 @@ void getScreenArea()
 					else
 						score = 0;
 				}
-
 			}
 		}
 	}
 	end = getTickCount();
 	cout << "modify1 time: " << (end - start) / getTickFrequency() << endl;
+	if (write == true)
+		imwrite("./test2/modifyImg1.jpg", modifyImg1);
 
 	start = getTickCount();
 	Mat modifyImg2 = modifyImg1.clone();
@@ -569,7 +616,6 @@ void getScreenArea()
 				belowIndex = index + 1;
 				//frontIndex = j * width + (i - 1);
 				//backIndex = j * width + (i + 1);
-
 				score++;
 				if (modifyImg2.data[belowIndex] == 0)
 				{
@@ -584,27 +630,21 @@ void getScreenArea()
 					else
 						score = 0;
 				}
-
 			}
 		}
 	}
 	end = getTickCount();
 	cout << "modify2 time: " << (end - start) / getTickFrequency() << endl;
+	if (write == true)
+		imwrite("./test2/modifyImg2.jpg", modifyImg2);
 
 	start = getTickCount();
-	findAndDrawContour(modifyImg2, imgR2, "./test2/screen.jpg", 1);
-
-
-	//Mat newSub = sub - thresR2;
-	//Mat thresR3;
-	//threshold(newSub, thresR3, 0, 255, THRESH_OTSU);
-
-
+	findAndDrawContour(modifyImg2, imgR2, "./test2/screen.jpg", write);
 
 	end = getTickCount();
 	cout << "find time: " << (end - start) / getTickFrequency() << endl;
 	//imwrite("./test2/modifyImg5.jpg", modifyImg);
-	//imwrite("./test2/testImg.jpg", modifyImg2);
+
 }
 
 void test()
@@ -922,188 +962,91 @@ void tryThres()
 
 int main()
 {
-	double start, end;
 	//namedWindow("window", cv::WINDOW_NORMAL);
 	//resizeWindow("window", cv::Size(640, 720));	//640,720
 	//combineImages();
 	//getScreenArea();
 	//getOilArea();
 
-
-	//Mat img = imread("./test2/thresResult2.jpg", 0);
 	Mat imgR1 = imread("./Origin2/0/1.jpg", IMREAD_GRAYSCALE);
 	Mat imgR2 = imread("./Origin2/0/2.jpg", IMREAD_GRAYSCALE);
-	start = getTickCount();
+	Mat imgR2_c = imread("./Origin2/0/2.jpg", IMREAD_COLOR);
 
+	bool write = false;
 
-	Mat thresR;
-	threshold(imgR1, thresR, 0, 255, THRESH_OTSU);
-
-
-	//Mat thresRes = r1;
-	//int height = thresRes.rows;
-	//int width = thresRes.cols;
-	//for (int i = 0; i < width; i++)
-	//{
-	//	for (int j = 0; j < height-1; j++)
-	//	{
-	//		int index = j * width + i;
-	//		int postIndex = (j + 1) * width + i;
-
-
-	Mat modifyImg = thresR.clone();
-	int height = modifyImg.rows;
-	int width = modifyImg.cols;
-	int index, aboveIndex, frontIndex, backIndex, belowIndex;
-	int score = 0;
-	int fillColor = 0;
-	int fillThreshold = 30;
-	bool continuousWhite = false;
-	int tempIndex;
-
-	for (int i = 1; i < width - 1; i++)
-	{
-		score = 0;
-		for (int j = 1; j < height - 1; j++)
-		{
-			index = j * width + i;
-			if (modifyImg.data[index] > 0)	
-			{
-				//aboveIndex = (j - 1) * width + i;
-				belowIndex = (j + 1) * width + i;
-				//frontIndex = j * width + (i - 1);
-				//backIndex = j * width + (i + 1);
-
-				score++;
-				if (modifyImg.data[belowIndex] == 0)
-				{
-					if (score < fillThreshold)
-					{
-						while (score > 0)
-						{
-							tempIndex = (j - score + 1) * width + i;
-							modifyImg.data[tempIndex] = 0;
-							score--;
-							//cout << score << endl;
-						}
-					}
-					else
-						score = 0;
-				}
-
-			}
-		}
-	}
-	Mat sub = imgR2 - modifyImg;
-
-	//Mat sub = imgR2 - imgR1;
-
+	double start, end;
+	double totalTime = 0.0;
+	
+	// threshold
 	start = getTickCount();
 	Mat thresR2;
 	threshold(imgR2, thresR2, 80, 255, THRESH_BINARY);	//sub
 	//threshold(sub, thresR2, 0, 255, THRESH_OTSU);
-	//imwrite("./test2/threshTest.jpg", thresR2);
 	end = getTickCount();
+	totalTime += end - start;
 	cout << "thresh time: " << (end - start) / getTickFrequency() << endl;
+	if(write == true)
+		imwrite("./test2/threshTest.jpg", thresR2);
 
+	// reduce ROI
 	start = getTickCount();
-	Mat modifyImg1 = thresR2.clone();
-	height = modifyImg1.rows;
-	width = modifyImg1.cols;
-	score = 0;
-	fillColor = 0;
-	fillThreshold = 30;
-#pragma omp parallel for
-	for (int i = 1; i < width - 1; i++)
+	int roi1_width;
+	int roi1_height = 1000;  //1000
+	int roi2_width = 1000;
+	int roi2_height;
+	int roi3_width;
+	int roi3_height = 1000;  //1000
+	vector<vector<Point>> contours;
+	findContours(thresR2, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
+	// filter contour
+	vector<Rect> areas;
+	Rect roi1;
+	Rect roi2;
+	Rect roi3;
+	for (auto contour : contours)
 	{
-		score = 0;
-		for (int j = 1; j < height - 1; j++)
+		auto box = boundingRect(contour);
+		if (box.width < 2000 || box.height < 2000)
+			continue;
+		areas.push_back(box);
+		// get ROI
+		roi1_width = box.br().x - box.tl().x;
+		roi2_height = box.br().y - box.tl().y;
+		roi3_width = box.br().x - box.tl().x;
+		//cout << box.tl() << endl;
+		roi1 = Rect(box.tl().x + roi2_width, box.tl().y, roi1_width, roi1_height);
+		roi2 = Rect(box.tl().x, box.tl().y, roi2_width, roi2_height);
+		roi3 = Rect(box.br().x + roi2_width - roi3_width, box.br().y - roi3_height, roi3_width, roi3_height);
+		if (write)
 		{
-			index = j * width + i;
-			if (modifyImg1.data[index] > 0)
-			{
-				//aboveIndex = (j - 1) * width + i;
-				belowIndex = (j + 1) * width + i;
-				//frontIndex = j * width + (i - 1);
-				//backIndex = j * width + (i + 1);
-
-				score++;
-				if (modifyImg1.data[belowIndex] == 0)
-				{
-					if (score < fillThreshold)
-					{
-						while (score > 0)
-						{
-							tempIndex = (j - score + 1) * width + i;
-							modifyImg1.data[tempIndex] = 0;
-							score--;
-						}
-					}
-					else
-						score = 0;
-				}
-
-			}
+			rectangle(imgR2_c, roi1, Scalar(0, 0, 255), 10);
+			rectangle(imgR2_c, roi2, Scalar(0, 255, 0), 10);
+			rectangle(imgR2_c, roi3, Scalar(255, 0, 0), 10);
 		}
 	}
+	if (write)
+		imwrite("./test2/boundingRect.jpg", imgR2_c);
 	end = getTickCount();
-	cout << "modify1 time: " << (end - start) / getTickFrequency() << endl;
+	totalTime += end - start;
+	cout << "reduce time: " << (end - start) / getTickFrequency() << endl;
 
+	// scan
 	start = getTickCount();
-	Mat modifyImg2 = modifyImg1.clone();
-	height = modifyImg2.rows;
-	width = modifyImg2.cols;
-	score = 0;
-	fillColor = 0;
-	fillThreshold = 5;
-	for (int i = 1; i < height - 1; i++)
-	{
-		score = 0;
-		for (int j = 1; j < width - 1; j++)
-		{
-			index = i * width + j;
-			if (modifyImg2.data[index] > 0)
-			{
-				//aboveIndex = (j - 1) * width + i;
-				belowIndex = index + 1;
-				//frontIndex = j * width + (i - 1);
-				//backIndex = j * width + (i + 1);
-
-				score++;
-				if (modifyImg2.data[belowIndex] == 0)
-				{
-					if (score < fillThreshold)
-					{
-						while (score > 0)
-						{
-							modifyImg2.data[index-score+1] = 0;
-							score--;
-						}
-					}
-					else
-						score = 0;
-				}
-
-			}
-		}
-	}
+	Mat modifiedImg = pixelwiseScan(thresR2, roi1, write);
+	Mat modifiedImg2 = pixelwiseScan(modifiedImg, roi2, write);
+	Mat modifiedImg3 = pixelwiseScan(modifiedImg2, roi3, write);
+	//Mat modifiedImg3 = pixelwiseScan(thresR2, Rect(0, 0, thresR2.cols, thresR2.rows), write);
 	end = getTickCount();
-	cout << "modify2 time: " << (end - start) / getTickFrequency() << endl;
+	totalTime += end - start;
+	cout << "scan time: " << (end - start) / getTickFrequency() << endl;
 
+	// find and draw contour
 	start = getTickCount();
-	findAndDrawContour(modifyImg2, imgR2, "./test2/screen.jpg", 1);
-
-
-	//Mat newSub = sub - thresR2;
-	//Mat thresR3;
-	//threshold(newSub, thresR3, 0, 255, THRESH_OTSU);
-	
-
-
+	findAndDrawContour(modifiedImg2, imgR2, "./test2/screen.jpg", write);
 	end = getTickCount();
+	totalTime += end - start;
 	cout << "find time: " << (end - start) / getTickFrequency() << endl;
-	//imwrite("./test2/modifyImg5.jpg", modifyImg);
-	//imwrite("./test2/testImg.jpg", modifyImg2);
+	cout << "total time: " << totalTime / getTickFrequency() << endl;
 
 	return 0;
 }
