@@ -33,7 +33,7 @@ void combineImages()
 	imwrite("r2_real.jpg", combineImg);
 }
 
-void drawHist(Mat* img, bool write)
+void drawHist(Mat* img, bool write, bool draw)
 {
 	int numbins = 256;
 	int channels[1] = { 0 };
@@ -99,10 +99,17 @@ void drawHist(Mat* img, bool write)
 		}
 		cout << "count num: " + to_string(count) << endl;
 	}
-	//imshow("window", histImg);
-	//waitKey(0);
-	//imshow("window", *img);
-	//waitKey(0);
+	if (draw)
+	{
+		for (int i = 0; i < histSize[0]; i++)
+		{
+			cout << i << " " << cvRound(hist.at<float>(i)) << endl;
+		}
+		imshow("window", histImg);
+		waitKey(0);
+		//imshow("window", *img);
+		//waitKey(0);
+	}
 }
 
 int calcContour(vector<Point> targetContour, Mat r)
@@ -315,21 +322,22 @@ int main()
 	Mat imgR2_c = imread("./Origin2/0/2.jpg", IMREAD_COLOR);
 
 	bool write = false;
+	bool showHist = false;
 
 	int64 start, end;
 	int64 totalTime = 0;
-	
+
 	// threshold
 	start = getTickCount();
 	Mat thresR2;
-	drawHist(&imgR2, write);
+	drawHist(&imgR2, write, showHist);
 	int bias = 10;
 	threshold(imgR2, thresR2, flag[1] - bias, 255, THRESH_BINARY);	//80
 	//threshold(imgR2, thresR2, 0, 255, THRESH_OTSU);
 	end = getTickCount();
 	totalTime += end - start;
 	cout << "thresh time: " << (end - start) / getTickFrequency() << endl;
-	if(write == true)
+	if (write)
 		imwrite("./test2/threshTest.jpg", thresR2);
 
 	// reduce ROI
@@ -364,7 +372,7 @@ int main()
 		//cout << box.tl() << endl;
 		roi1 = Rect(box.tl().x + roi2_width, box.tl().y, roi1_width - roi2_width, roi1_height);
 		roi2 = Rect(box.tl().x, box.tl().y, roi2_width, roi2_height);
-		roi3 = Rect(box.br().x + roi2_width - roi3_width, box.br().y - roi3_height, roi3_width- roi2_width, roi3_height);
+		roi3 = Rect(box.br().x + roi2_width - roi3_width, box.br().y - roi3_height, roi3_width - roi2_width, roi3_height);
 		roi1_m = Rect(box.tl().x + roi2_width + modifyAmount, box.tl().y, roi1_width - roi2_width - 2 * modifyAmount, roi1_height);
 		roi2_m = Rect(box.tl().x, box.tl().y + roi1_height, roi2_width, roi2_height - 2 * roi3_height);
 		roi3_m = Rect(box.br().x + roi2_width - roi3_width + modifyAmount, box.br().y - roi3_height, roi3_width - roi2_width - 2 * modifyAmount, roi3_height);
@@ -416,14 +424,18 @@ int main()
 				points3.push_back(contourPoint);
 		}
 	}
-	if(write)
-		cout <<"screen contour num: " << screenContours.size() << endl;
+	if (write)
+		cout << "screen contour num: " << screenContours.size() << endl;
 	// fit lines 
 	Mat lineResult = imgR2_c;
 	Vec4f lineParam1, lineParam2, lineParam3;
 	fitLine(points1, lineParam1, DIST_L2, 0, 1e-2, 1e-2);
 	fitLine(points2, lineParam2, DIST_L2, 0, 1e-2, 1e-2);
 	fitLine(points3, lineParam3, DIST_L2, 0, 1e-2, 1e-2);
+	//lineParam1[3] -= 710;  //test
+	//lineParam2[2] -= 710;  //test
+	//lineParam3[3] += 711;  //test
+	//write = true;	//test
 	if (write)
 	{
 		lineResult = drawLine(lineParam1, lineResult, 0, 5);
@@ -434,13 +446,61 @@ int main()
 	end = getTickCount();
 	totalTime += end - start;
 	cout << "fit time: " << (end - start) / getTickFrequency() << endl;
-	cout << "total time: " << totalTime / getTickFrequency() << endl;
 
 	// translation
-	Mat sub = imgR2 - imgR1;
-	write = true;
+	// threshold
+	start = getTickCount();
+	Mat thresOil;
+	threshold(imgR2, thresOil, flag[1], 255, THRESH_TOZERO_INV);
+	threshold(thresOil, thresOil, flag[0], 255, THRESH_TOZERO);
 	if (write)
-		imwrite("./test2/sub.jpg", sub);
+		imwrite("./test2/thresOil.jpg", thresOil);
+	// calculate shift
+	int colNum = 100;
+	int rowStart = 1000;
+	int rowEnd = 10000;
+	int pixelIndex;
+	int imgWidth = thresOil.cols;
+	int* shiftCount = new int[colNum];
+	int totalCount = 0;
+	int shiftAmount;
+	for (int i = 0; i < colNum; i++)
+		shiftCount[i] = 0;
+	for (int i = imgWidth - colNum; i < imgWidth; i++)
+	{
+		for (int j = rowStart; j < rowEnd; j++)
+		{
+			pixelIndex = j * imgWidth + i;
+			if (thresOil.data[pixelIndex] > 0)
+			{
+				shiftCount[i - (imgWidth - colNum)]++;
+			}
+			if (thresOil.data[pixelIndex] == 0 && shiftCount[i - (imgWidth - colNum)] > 0)
+			{
+				totalCount += shiftCount[i - (imgWidth - colNum)];
+				//cout << shiftCount[i - (imgWidth - colNum)] << endl;
+				break;
+			}
+		}
+	}
+	delete[]shiftCount;
+	shiftCount = nullptr;
+	shiftAmount = totalCount / colNum;
+	//draw lines
+	lineParam1[3] -= shiftAmount;  
+	lineParam2[2] -= shiftAmount;  
+	lineParam3[3] += shiftAmount; 
+	if (write)
+	{
+		lineResult = drawLine(lineParam1, lineResult, 0, 5);
+		lineResult = drawLine(lineParam2, lineResult, 1, 5);
+		lineResult = drawLine(lineParam3, lineResult, 0, 5);
+		imwrite("./test2/oilLine.jpg", lineResult);
+	}
+	end = getTickCount();
+	totalTime += end - start;
+	cout << "oilLine time: " << (end - start) / getTickFrequency() << endl;
+	cout << "total time: " << totalTime / getTickFrequency() << endl;
 
 	return 0;
 }
